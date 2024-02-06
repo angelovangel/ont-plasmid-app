@@ -1,0 +1,7 @@
+testdata
+.Rproj.user
+.Renviron
+.nextflow*
+results-ontseq
+.DS_Store
+
