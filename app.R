@@ -15,6 +15,7 @@ library(digest)
 library(readxl)
 library(digest)
 library(reactable)
+library(lubridate)
 
 
 # Shiny app to run the ONT plasmid pipeline using pueue (BCL)
@@ -67,10 +68,10 @@ server_fallback <- function(input, output, session) {
 }
 server <- function(input, output, session) {
   # check if pueue and process-ont.sh are on path
-  if (!bin_on_path('pueue')) {
-    notify_failure('pueue not found', position = 'center-bottom')
-  } else if (!bin_on_path('process-ontseq.sh')) {
-    notify_failure('process-ontseq.sh not found', position = 'center-bottom')
+  if (!bin_on_path('tmux')) {
+    notify_failure('tmux not found', position = 'center-bottom')
+  } else if (!bin_on_path('ont-plasmid.sh')) {
+    notify_failure('ont-plasmid.sh not found', position = 'center-bottom')
   } else if (!bin_on_path('nextflow')) {
     notify_failure('nextflow not found', position = 'center-bottom')
   } else {
@@ -79,14 +80,43 @@ server <- function(input, output, session) {
   
   
   empty_df <- data.frame(
-    id = NA,
-    status = NA,
+    session_id = NA,
+    started = NA,
+    runtime = NA,
     command = NA,
-    label = NA,
-    start = NA
+    active = NA,
+    attached = NA,
+    session_path = NA
   )
-
+  
   # reactives
+  tmux_sessions <- reactive({
+    invalidateLater(2000, session)
+    oldw <- getOption("warn")
+    options(warn = -1)
+    tmuxinfo <- system2("bin/helper.sh", stdout = TRUE, stderr = TRUE)
+    options(warn = oldw)
+    
+    if (any(str_detect(tmuxinfo, 'no server|error'))) {
+      empty_df
+    } else {
+      data.frame(
+        session_id = str_split_i(tmuxinfo, " ", 2),
+        started = str_split_i(tmuxinfo, " ", 1) %>% as.numeric() %>% as.POSIXct(),
+        runtime = NA,
+        command = str_split_i(tmuxinfo, " ", 5),
+        active = str_split_i(tmuxinfo, " ", 6),
+        attached = str_split_i(tmuxinfo, " ", 3),
+        session_path = str_split_i(tmuxinfo, " ", 4)
+      ) %>%
+        mutate(
+          runtime = difftime(now(), started, units = 'hours'),
+          attached = if_else(as.numeric(attached) == 1, 'yes', 'no')
+        ) %>%
+        arrange(started)
+    }
+  })
+
   samplesheet <- reactive({
     file <- input$upload
   })
@@ -95,31 +125,6 @@ server <- function(input, output, session) {
     getReactableState('table', 'selected')
   })
   
-  pu_status <- reactive({
-    invalidateLater(2000, session = session)
-    j <- system2('pueue', args = c('status', '-j'), stdout = T)
-    l <- jsonlite::fromJSON(j)
-    #df <- purrr::map_df(l$tasks, dplyr::bind_rows)
-    df <- tibble(
-      id = sapply(l$tasks, '[[', 'id'),
-      status =lapply(l$tasks, '[[', 'status') %>% sapply(last),
-      command = sapply(l$tasks, '[[', 'command'),
-      label = sapply(l$tasks, '[[', 'label'),
-      start = sapply(l$tasks, '[[', 'start')
-    )
-    if(nrow(df) == 0) {
-      empty_df
-    } else {
-      df %>% 
-        dplyr::select(id, status, command, label, start) %>% 
-        unique() %>% 
-        mutate(
-          status = unlist(status),
-          command = str_trunc(command, 70)
-        )
-    }
-    #purrr::map_df(l$tasks, dplyr::bind_rows) %>% select(id, status, command, label, start, end) %>% unique() %>% mutate(status = unlist(status))
-  })
   
   # dir choose management --------------------------------------
   default_path <- Sys.getenv('DEFAULT_PATH')
@@ -163,95 +168,53 @@ server <- function(input, output, session) {
     } else if (is.null(samplesheet()$datapath)) {
       notify_info("No samplesheet uploaded", position = 'center-bottom')
     } else {
-      # hard set fastq folder and build arguments
-      selectedFolder <<- parseDirPath(volumes, input$fastq_folder)
-      htmlreport <- if_else(input$report, '-r', '')
-      
-      arguments <<- c('-p', selectedFolder, '-c', samplesheet()$datapath, htmlreport)  
-      out <- system2('pueue', args = c('add', '-i', 'process-ontseq.sh', arguments))
-      notify_info(out, position = 'center-bottom')
+     
     }
   })
   
   observeEvent(input$log, {
   #observe({
-    session_selected <- pu_status()[selected(), ]$id
+    session_selected <- tmux_sessions()[selected(), ]$session_id
     # session_selected is NA if no sessions running, length(session_selected) == 0 if no session is selected
     
-    withCallingHandlers({
-      shinyjs::html('stdout', '')
-      args <- c('log', '-f', as.numeric(session_selected))
-      #args <- c('follow', as.numeric(session_selected))
-      p <- processx::run(
-        'pueue', args = args,
-        stderr_to_stdout = TRUE,
-        error_on_status = FALSE,
-        stdout_callback = function(line, proc) {message(line)},
-        #stdout_line_callback = function(line, proc) {message(line)}
-      )
-    },
-      message = function(m) {
-        shinyjs::html(id = "stdout", html = m$message, add = T);
-        runjs("document.getElementById('stdout').parentElement.scrollTo({ top: 1e9, behavior: 'smooth' });")
-      }
-    )
   
   })
   
   observeEvent(input$kill,{
-    session_selected <- pu_status()[selected(), ]$id
+    session_selected <- tmux_sessions()[selected(), ]$session_id
     
-    if (length(session_selected == 1)) {
-      out <- system2('pueue', args = c('kill', session_selected), stdout = T, stderr = T)
-      notify_info(out, position = 'center-bottom')
-    } else {
-      notify_info('select session first', position = 'center-bottom')
-    }
   })
   
   observeEvent(input$clean, {
-    out <- system2('pueue', args = c('clean'), stdout = T)
-    notify_info(out, position = 'center-bottom')
+    
   })
   
-  observeEvent(input$reset, {
-    shinyalert(
-      title = 'Reset everything!', text = 'This will kill all tasks, clean up afterwards and reset EVERYTHING!', type = 'warning',
-      callbackR = function(x) {
-        if (x) {
-          out <- system2('pueue', args = c('reset', '-f'), stdout = T); 
-          notify_info(out, position = 'center-bottom') 
-        }
-      }
-    )
-  })
   
   # outputs
   output$table <- renderReactable({
     reactable(
-      empty_df, pagination = FALSE, highlight = TRUE, height = 200, compact = T, 
+      empty_df,
+      #tmux_sessions(), 
+      pagination = FALSE, highlight = TRUE, height = 200, compact = T, 
       fullWidth = T, selection = 'single', onClick = 'select', defaultSelected = 1,
       theme = reactableTheme(
-        rowSelectedStyle = list(backgroundColor = "#eee", boxShadow = " inset 2px 0 0 0 #7B241C")
+        rowSelectedStyle = list(backgroundColor = "#eee", boxShadow = "inset 2px 0 0 0 #7B241C")
       ),
       columns = list(
-        id = colDef(minWidth = 25),
-        status = colDef(minWidth = 40),
-        command = colDef(minWidth = 200),
-        label = colDef(minWidth = 40),
-        start = colDef(minWidth = 60, format = colFormat(datetime = T, locales = 'en-GB'))
+        started = colDef(format = colFormat(datetime = T, locales = 'en-GB')),
+        runtime = colDef(format = colFormat(suffix = ' h', digits = 2))
       )
     )
   })
   
   observe({
-    updateReactable('table', data = pu_status(), selected = selected())
+    updateReactable('table', data = tmux_sessions(), selected = selected())
   })
   
 }
 
 
-if (!bin_on_path('pueue') || !(bin_on_path('process-ontseq.sh'))) {
+if (!bin_on_path('tmux') || !(bin_on_path('ont-plasmid.sh'))) {
   shinyApp(ui, server_fallback)
 } else {
   shinyApp(ui, server)
