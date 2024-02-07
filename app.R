@@ -10,6 +10,7 @@ library(dplyr)
 library(processx)
 library(shinyFiles)
 library(shinybusy)
+library(shinyalert)
 library(digest)
 library(readxl)
 library(digest)
@@ -32,11 +33,15 @@ sidebar <- sidebar(
   tags$hr(),
   actionButton('start', 'Start pipeline'),
   tags$hr(),
-  actionButton('attach', 'Attach session')
+  actionButton('log', 'View session output'),
+  actionButton('kill', 'Kill process in session'),
+  actionButton('clean', 'Remove finished tasks'),
+  actionButton('reset', 'Kill all tasks and reset')
 )
 
 ui <- page_navbar(
   useShinyjs(),
+  useShinyalert(),
   fillable = T,
   title = 'ONT plasmid assembly app',
   theme = bs_theme(bootswatch = 'yeti', primary = '#7B241C'),
@@ -66,9 +71,12 @@ server <- function(input, output, session) {
     notify_failure('pueue not found', position = 'center-bottom')
   } else if (!bin_on_path('process-ontseq.sh')) {
     notify_failure('process-ontseq.sh not found', position = 'center-bottom')
+  } else if (!bin_on_path('nextflow')) {
+    notify_failure('nextflow not found', position = 'center-bottom')
   } else {
     notify_success('Server is ready', position = 'center-bottom')
   }
+  
   
   empty_df <- data.frame(
     id = NA,
@@ -91,7 +99,14 @@ server <- function(input, output, session) {
     invalidateLater(2000, session = session)
     j <- system2('pueue', args = c('status', '-j'), stdout = T)
     l <- jsonlite::fromJSON(j)
-    df <- purrr::map_df(l$tasks, dplyr::bind_rows)
+    #df <- purrr::map_df(l$tasks, dplyr::bind_rows)
+    df <- tibble(
+      id = sapply(l$tasks, '[[', 'id'),
+      status =lapply(l$tasks, '[[', 'status') %>% sapply(last),
+      command = sapply(l$tasks, '[[', 'command'),
+      label = sapply(l$tasks, '[[', 'label'),
+      start = sapply(l$tasks, '[[', 'start')
+    )
     if(nrow(df) == 0) {
       empty_df
     } else {
@@ -135,8 +150,80 @@ server <- function(input, output, session) {
         'Number of barcodes:\n', nbarcodes, '\n',  '-------\n\n',
         'Command:\n',
         'process-ontseq.sh', arguments)
-      
     }
+  })
+  
+  
+  
+  # observers
+  #main call
+  observeEvent(input$start, {
+    if (is.integer(input$fastq_folder)) {
+      notify_info("No fastq folder selected", position = 'center-bottom')
+    } else if (is.null(samplesheet()$datapath)) {
+      notify_info("No samplesheet uploaded", position = 'center-bottom')
+    } else {
+      # hard set fastq folder and build arguments
+      selectedFolder <<- parseDirPath(volumes, input$fastq_folder)
+      htmlreport <- if_else(input$report, '-r', '')
+      
+      arguments <<- c('-p', selectedFolder, '-c', samplesheet()$datapath, htmlreport)  
+      out <- system2('pueue', args = c('add', '-i', 'process-ontseq.sh', arguments))
+      notify_info(out, position = 'center-bottom')
+    }
+  })
+  
+  observeEvent(input$log, {
+  #observe({
+    session_selected <- pu_status()[selected(), ]$id
+    # session_selected is NA if no sessions running, length(session_selected) == 0 if no session is selected
+    
+    withCallingHandlers({
+      shinyjs::html('stdout', '')
+      args <- c('log', '-f', as.numeric(session_selected))
+      #args <- c('follow', as.numeric(session_selected))
+      p <- processx::run(
+        'pueue', args = args,
+        stderr_to_stdout = TRUE,
+        error_on_status = FALSE,
+        stdout_callback = function(line, proc) {message(line)},
+        #stdout_line_callback = function(line, proc) {message(line)}
+      )
+    },
+      message = function(m) {
+        shinyjs::html(id = "stdout", html = m$message, add = T);
+        runjs("document.getElementById('stdout').parentElement.scrollTo({ top: 1e9, behavior: 'smooth' });")
+      }
+    )
+  
+  })
+  
+  observeEvent(input$kill,{
+    session_selected <- pu_status()[selected(), ]$id
+    
+    if (length(session_selected == 1)) {
+      out <- system2('pueue', args = c('kill', session_selected), stdout = T, stderr = T)
+      notify_info(out, position = 'center-bottom')
+    } else {
+      notify_info('select session first', position = 'center-bottom')
+    }
+  })
+  
+  observeEvent(input$clean, {
+    out <- system2('pueue', args = c('clean'), stdout = T)
+    notify_info(out, position = 'center-bottom')
+  })
+  
+  observeEvent(input$reset, {
+    shinyalert(
+      title = 'Reset everything!', text = 'This will kill all tasks, clean up afterwards and reset EVERYTHING!', type = 'warning',
+      callbackR = function(x) {
+        if (x) {
+          out <- system2('pueue', args = c('reset', '-f'), stdout = T); 
+          notify_info(out, position = 'center-bottom') 
+        }
+      }
+    )
   })
   
   # outputs

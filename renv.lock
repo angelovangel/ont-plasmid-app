@@ -1,6 +1,6 @@
 {
   "R": {
-    "Version": "4.3.2",
+    "Version": "4.3.1",
     "Repositories": [
       {
         "Name": "CRAN",
@@ -523,21 +523,6 @@
       ],
       "Hash": "709d852d33178db54b17c722e5b1e594"
     },
-    "purrr": {
-      "Package": "purrr",
-      "Version": "1.0.2",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Requirements": [
-        "R",
-        "cli",
-        "lifecycle",
-        "magrittr",
-        "rlang",
-        "vctrs"
-      ],
-      "Hash": "1cba04a4e9414bdefc9dcaa99649a8dc"
-    },
     "rappdirs": {
       "Package": "rappdirs",
       "Version": "0.3.3",
@@ -721,6 +706,21 @@
       ],
       "Hash": "96bb249d21b7473dbeb0311702ef5288"
     },
+    "shinyalert": {
+      "Package": "shinyalert",
+      "Version": "3.0.0",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "htmltools",
+        "knitr",
+        "shiny",
+        "stats",
+        "uuid"
+      ],
+      "Hash": "2fd42421abd79dcaf0855fa1d21599a3"
+    },
     "shinybusy": {
       "Package": "shinybusy",
       "Version": "0.3.2",
@@ -841,6 +841,16 @@
         "R"
       ],
       "Hash": "1fe17157424bb09c48a8b3b550c753bc"
+    },
+    "uuid": {
+      "Package": "uuid",
+      "Version": "1.2-0",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R"
+      ],
+      "Hash": "303c19bfd970bece872f93a824e323d9"
     },
     "vctrs": {
       "Package": "vctrs",
