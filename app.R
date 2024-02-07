@@ -54,6 +54,12 @@ ui <- page_navbar(
   )
 )
 
+server_fallback <- function(input, output, session) {
+  shinybusy::report(
+    title = 'App not configured', 
+    text = 'Please start pueued service and make sure process-ontseq.sh is in your path', 
+    type = 'failure')
+}
 server <- function(input, output, session) {
   # check if pueue and process-ont.sh are on path
   if (!bin_on_path('pueue')) {
@@ -61,7 +67,7 @@ server <- function(input, output, session) {
   } else if (!bin_on_path('process-ontseq.sh')) {
     notify_failure('process-ontseq.sh not found', position = 'center-bottom')
   } else {
-    notify_success('pipeline is ready', position = 'center-bottom')
+    notify_success('Server is ready', position = 'center-bottom')
   }
   
   empty_df <- data.frame(
@@ -157,5 +163,11 @@ server <- function(input, output, session) {
   
 }
 
-shinyApp(ui, server)
+
+if (!bin_on_path('pueue') || !(bin_on_path('process-ontseq.sh'))) {
+  shinyApp(ui, server_fallback)
+} else {
+  shinyApp(ui, server)
+}
+
 
