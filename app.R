@@ -26,18 +26,18 @@ bin_on_path = function(bin) {
 }
 
 sidebar <- sidebar(
-  title = 'Inputs',
+  title = '',
   selectizeInput('pipeline', 'Assembly pipeline', choices = c('bacteria', 'plasmid'), selected = 'plasmid'),
   fileInput('upload', 'Upload sample sheet', multiple = F, accept = c('.xlsx', '.csv'), placeholder = 'xlsx or csv file'),
   shinyDirButton("fastq_folder", "Select fastq_pass folder", title ='Please select a fastq_pass folder from a run', multiple = F),
   checkboxInput('report', 'Faster html report', value = T),
-  tags$hr(),
+  #tags$hr(),
+  textInput('session_name', 'Name for new session (optional)', value = 'tgs'),
   actionButton('start', 'Start pipeline'),
-  tags$hr(),
-  actionButton('log', 'View session output'),
-  actionButton('kill', 'Kill process in session'),
-  actionButton('clean', 'Remove finished tasks'),
-  actionButton('reset', 'Kill all tasks and reset')
+  #tags$hr(),
+  actionButton('show_session', 'Show session pane'),
+  actionButton('ctrlc', 'Send ctrl-c to session'),
+  actionButton('kill', 'Kill session'),
 )
 
 ui <- page_navbar(
@@ -125,6 +125,9 @@ server <- function(input, output, session) {
     getReactableState('table', 'selected')
   })
   
+  session_selected <- reactive({
+    tmux_sessions()[selected(), ]$session_id
+  })
   
   # dir choose management --------------------------------------
   default_path <- Sys.getenv('DEFAULT_PATH')
@@ -142,11 +145,11 @@ server <- function(input, output, session) {
       cat("No samplesheet uploaded")
     } else {
       # hard set fastq folder and build arguments
-      selectedFolder <<- parseDirPath(volumes, input$fastq_folder)
-      nbarcodes <<- length(list.files(path = selectedFolder, pattern = "barcode*", recursive = F))
+      selectedFolder <- parseDirPath(volumes, input$fastq_folder)
+      nbarcodes <- length(list.files(path = selectedFolder, pattern = "barcode*", recursive = F))
       htmlreport <- if_else(input$report, '-r', '')
       
-      arguments <<- c('-p', selectedFolder, '-c', samplesheet()$datapath, htmlreport)  
+      arguments <- c('-p', selectedFolder, '-c', samplesheet()$datapath, '-w', input$pipeline, htmlreport)  
       
       #:) remove empty strings
       #arguments <- arguments[arguments != ""] 
@@ -168,26 +171,75 @@ server <- function(input, output, session) {
     } else if (is.null(samplesheet()$datapath)) {
       notify_info("No samplesheet uploaded", position = 'center-bottom')
     } else {
+      new_session_name <- paste0(digest::digest(runif(1), algo = 'crc32'), '-', input$session_name)
+      selectedFolder <- parseDirPath(volumes, input$fastq_folder)
+      htmlreport <- if_else(input$report, '-r', '')
+      
+      # launch new session
+      args1 <- c('new', '-d', '-s', new_session_name)
+      system2('tmux', args = args1)
+      
+      # execute pipeline in the new session
+      string <- paste(
+        'ont-plasmid.sh', 'Space', '-p', 'Space', selectedFolder, 'Space',  
+        '-c', 'Space', samplesheet()$datapath, 'Space', '-w', 'Space', input$pipeline, 'Space', htmlreport, sep = ' '
+      )
+      args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
+      system2('tmux', args = args2)
+      notify_success(text = paste0('Started session ', new_session_name), position = 'center-bottom')
      
     }
   })
   
-  observeEvent(input$log, {
-  #observe({
-    session_selected <- tmux_sessions()[selected(), ]$session_id
-    # session_selected is NA if no sessions running, length(session_selected) == 0 if no session is selected
-    
-  
+  observeEvent(input$show_session, {
+    #observe({
+    #session_selected <- tmux_sessions()[selected(), ]$session_id
+    withCallingHandlers({
+      shinyjs::html(id = "stdout", "")
+      #args <- paste0(' a', ' -t ', session_selected)
+      args <- c('capture-pane', '-S', '-', '-E', '-', '-pt', session_selected())
+      
+      p <- processx::run(
+        'tmux', args = args,
+        stdout_callback = function(line, proc) {message(line)},
+        #stdout_line_callback = function(line, proc) {message(line)},
+        stderr_to_stdout = TRUE,
+        error_on_status = FALSE
+      )
+    },
+    message = function(m) {
+      shinyjs::html(id = "stdout", html = m$message, add = T);
+      #runjs("document.getElementById('stdout').parentElement.scrollTo(0,1e9);")
+      runjs("document.getElementById('stdout').parentElement.scrollTo({ top: 1e9, behavior: 'smooth' });")
+    }
+    )
   })
   
-  observeEvent(input$kill,{
-    session_selected <- tmux_sessions()[selected(), ]$session_id
+  # close session
+  observeEvent(input$kill, {
+    #session_selected <- tmux_sessions()[selected(), ]$session_id
+    args <- paste0('kill-session -t ', session_selected())
+    if (!is.null(selected())) {
+      system2('tmux', args = args)
+      notify_success(text = paste0('Session ', session_selected(), ' killed!'), position = 'center-bottom')
+    } else{
+      notify_failure('Select session first!', timeout = 2000, position = 'center-bottom')
+    }  
+  })
+  
+  # send ctrl-c
+  observeEvent(input$ctrlc, {
+    #session_selected <- tmux_sessions()[selected(), ]$session_id
+    args <- paste0('send-keys -t ', session_selected(), ' C-c')
+    if (!is.null(selected())) {
+      system2('tmux', args = args)
+      notify_success(text = paste0('Ctrl-C sent to session ', session_selected()), timeout = 2000, position = 'center-bottom')
+    } else {
+      notify_failure('Select session first!', timeout = 2000, position = 'center-bottom')
+    }
     
   })
   
-  observeEvent(input$clean, {
-    
-  })
   
   
   # outputs

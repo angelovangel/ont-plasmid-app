@@ -4,4 +4,5 @@ testdata
 .nextflow*
 results-ontseq
 .DS_Store
+work*
 
