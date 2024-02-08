@@ -32,12 +32,13 @@ sidebar <- sidebar(
   shinyDirButton("fastq_folder", "Select fastq_pass folder", title ='Please select a fastq_pass folder from a run', multiple = F),
   checkboxInput('report', 'Faster html report', value = T),
   #tags$hr(),
-  textInput('session_name', 'Name for new session (optional)', value = 'tgs'),
+  textInput('session_name', 'Name for new session', value = 'tgs', placeholder = 'your name?'),
   actionButton('start', 'Start pipeline'),
   #tags$hr(),
   actionButton('show_session', 'Show session pane'),
   actionButton('ctrlc', 'Send ctrl-c to session'),
   actionButton('kill', 'Kill session'),
+  downloadButton('log', 'Save log to file')
 )
 
 ui <- page_navbar(
@@ -84,7 +85,7 @@ server <- function(input, output, session) {
     started = NA,
     runtime = NA,
     command = NA,
-    active = NA,
+    #active = NA,
     attached = NA,
     session_path = NA
   )
@@ -105,7 +106,7 @@ server <- function(input, output, session) {
         started = str_split_i(tmuxinfo, " ", 1) %>% as.numeric() %>% as.POSIXct(),
         runtime = NA,
         command = str_split_i(tmuxinfo, " ", 5),
-        active = str_split_i(tmuxinfo, " ", 6),
+        #active = str_split_i(tmuxinfo, " ", 6),
         attached = str_split_i(tmuxinfo, " ", 3),
         session_path = str_split_i(tmuxinfo, " ", 4)
       ) %>%
@@ -171,7 +172,7 @@ server <- function(input, output, session) {
     } else if (is.null(samplesheet()$datapath)) {
       notify_info("No samplesheet uploaded", position = 'center-bottom')
     } else {
-      new_session_name <- paste0(digest::digest(runif(1), algo = 'crc32'), '-', input$session_name)
+      new_session_name <- paste0(digest::digest(runif(1), algo = 'crc32'), '-', input$session_name, '-', input$pipeline)
       selectedFolder <- parseDirPath(volumes, input$fastq_folder)
       htmlreport <- if_else(input$report, '-r', '')
       
@@ -240,7 +241,36 @@ server <- function(input, output, session) {
     
   })
   
+  observe({
+    if(!is.null(selected())) {
+      shinyjs::enable('log')
+    } else {
+      shinyjs::disable('log')
+    }
+  })
   
+  #save log
+  logdata <- reactive({
+    args <- c('capture-pane', '-S', '-', '-E', '-', '-pt', session_selected())
+    if (!is.null(selected())) {
+      system2('tmux', args = args, stdout = T)
+    } else {
+      ''
+    }  
+  })
+  
+  output$log <- downloadHandler(
+    filename = function() {
+      paste0(session_selected(), '.log')
+      },
+    content = function(con) {
+      if(!is.null(selected())) {
+        writeLines(logdata(), con)
+      } else {
+        notify_failure('Select session first!', timeout = 2000, position = 'center-bottom')
+      }
+    }
+  )
   
   # outputs
   output$table <- renderReactable({
@@ -252,6 +282,7 @@ server <- function(input, output, session) {
       theme = reactableTheme(
         rowSelectedStyle = list(backgroundColor = "#eee", boxShadow = "inset 2px 0 0 0 #7B241C")
       ),
+      style = list(fontSize = '90%'),
       columns = list(
         started = colDef(format = colFormat(datetime = T, locales = 'en-GB')),
         runtime = colDef(format = colFormat(suffix = ' h', digits = 2))
