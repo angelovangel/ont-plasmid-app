@@ -32,7 +32,7 @@ sidebar <- sidebar(
   shinyDirButton("fastq_folder", "Select fastq_pass folder", title ='Please select a fastq_pass folder from a run', multiple = F),
   checkboxInput('report', 'Faster html report', value = T),
   #tags$hr(),
-  textInput('session_name', 'Name for new session', value = 'tgs', placeholder = 'your name?'),
+  textInput('session_name', 'Name for new session', value = 'assembly', placeholder = 'to identify later'),
   actionButton('start', 'Start pipeline'),
   #tags$hr(),
   actionButton('show_session', 'Show session pane'),
@@ -165,6 +165,12 @@ server <- function(input, output, session) {
   
   
   # observers
+  # samplesheet
+  observeEvent(input$upload, {
+    ext <- tools::file_ext(samplesheet()$datapath)
+    notify_info(paste0(ext, ' file uploaded'), position = 'center-bottom')
+  })
+  
   #main call
   observeEvent(input$start, {
     if (is.integer(input$fastq_folder)) {
