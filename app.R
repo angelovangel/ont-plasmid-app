@@ -178,7 +178,11 @@ server <- function(input, output, session) {
     } else if (is.null(samplesheet()$datapath)) {
       notify_info("No samplesheet uploaded", position = 'center-bottom')
     } else {
-      new_session_name <- paste0(digest::digest(runif(1), algo = 'crc32'), '-', input$session_name, '-', input$pipeline)
+      new_session_name <- paste0(
+        digest::digest(runif(1), algo = 'crc32'), '-', 
+        stringi::stri_replace_all_charclass(input$session_name, "\\p{WHITE_SPACE}", ""), 
+        '-', input$pipeline
+      )
       selectedFolder <- parseDirPath(volumes, input$fastq_folder)
       htmlreport <- if_else(input$report, '-r', '')
       
