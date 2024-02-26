@@ -30,9 +30,10 @@ sidebar <- sidebar(
   selectizeInput('pipeline', 'Assembly pipeline', choices = c('bacteria', 'plasmid'), selected = 'plasmid'),
   fileInput('upload', 'Upload sample sheet', multiple = F, accept = c('.xlsx', '.csv'), placeholder = 'xlsx or csv file'),
   shinyDirButton("fastq_folder", "Select fastq_pass folder", title ='Please select a fastq_pass folder from a run', multiple = F),
-  checkboxInput('report', 'Faster html report', value = T),
   #tags$hr(),
   textInput('session_name', 'Name for new session', value = 'assembly', placeholder = 'to identify later'),
+  checkboxInput('report', 'Faster html report', value = T),
+  checkboxInput('singularity', 'Run with Singularity'),
   actionButton('start', 'Start pipeline'),
   #tags$hr(),
   actionButton('show_session', 'Show session pane'),
@@ -185,6 +186,7 @@ server <- function(input, output, session) {
       )
       selectedFolder <- parseDirPath(volumes, input$fastq_folder)
       htmlreport <- if_else(input$report, '-r', '')
+      singularity <- if_else(input$singularity, '-s', '')
       
       # launch new session
       args1 <- c('new', '-d', '-s', new_session_name)
@@ -193,7 +195,8 @@ server <- function(input, output, session) {
       # execute pipeline in the new session
       string <- paste(
         'ont-plasmid.sh', 'Space', '-p', 'Space', selectedFolder, 'Space',  
-        '-c', 'Space', samplesheet()$datapath, 'Space', '-w', 'Space', input$pipeline, 'Space', htmlreport, sep = ' '
+        '-c', 'Space', samplesheet()$datapath, 'Space', '-w', 'Space', input$pipeline, 'Space', 
+        htmlreport, 'Space', singularity, sep = ' '
       )
       args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
       system2('tmux', args = args2)
