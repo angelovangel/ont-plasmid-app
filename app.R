@@ -33,7 +33,8 @@ sidebar <- sidebar(
   #tags$hr(),
   textInput('session_name', 'Name for new session', value = 'assembly', placeholder = 'to identify later'),
   checkboxInput('report', 'Faster html report', value = T),
-  checkboxInput('singularity', 'Run with Singularity'),
+  checkboxInput('map_reads', 'Map reads to assembly', value = T),
+  checkboxInput('singularity', 'Run with Singularity', value = F),
   actionButton('start', 'Start pipeline'),
   #tags$hr(),
   actionButton('show_session', 'Show session pane'),
@@ -150,8 +151,10 @@ server <- function(input, output, session) {
       selectedFolder <- parseDirPath(volumes, input$fastq_folder)
       nbarcodes <- length(list.files(path = selectedFolder, pattern = "barcode*", recursive = F))
       htmlreport <- if_else(input$report, '-r', '')
+      singularity <- if_else(input$singularity, '-s', '')
+      mapping <- if_else(input$map_reads, '-m', '')
       
-      arguments <- c('-p', selectedFolder, '-c', samplesheet()$datapath, '-w', input$pipeline, htmlreport)  
+      arguments <- c('-p', selectedFolder, '-c', samplesheet()$datapath, '-w', input$pipeline, htmlreport, mapping, singularity)  
       
       #:) remove empty strings
       #arguments <- arguments[arguments != ""] 
@@ -187,6 +190,7 @@ server <- function(input, output, session) {
       selectedFolder <- parseDirPath(volumes, input$fastq_folder)
       htmlreport <- if_else(input$report, '-r', '')
       singularity <- if_else(input$singularity, '-s', '')
+      mapping <- if_else(input$map_reads, '-m', '')
       
       # launch new session
       args1 <- c('new', '-d', '-s', new_session_name)
@@ -196,7 +200,7 @@ server <- function(input, output, session) {
       string <- paste(
         'ont-plasmid.sh', 'Space', '-p', 'Space', selectedFolder, 'Space',  
         '-c', 'Space', samplesheet()$datapath, 'Space', '-w', 'Space', input$pipeline, 'Space', 
-        htmlreport, 'Space', singularity, sep = ' '
+        htmlreport, 'Space', mapping, 'Space', singularity, sep = ' '
       )
       args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
       system2('tmux', args = args2)
