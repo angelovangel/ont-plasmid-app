@@ -67,7 +67,7 @@ ui <- page_navbar(
 server_fallback <- function(input, output, session) {
   shinybusy::report(
     title = 'App not configured', 
-    text = 'Please start pueued service and make sure process-ontseq.sh is in your path', 
+    text = 'Please make sure tmux and process-ontseq.sh is in your path', 
     type = 'failure')
 }
 server <- function(input, output, session) {
