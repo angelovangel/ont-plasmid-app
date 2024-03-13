@@ -34,6 +34,7 @@ sidebar <- sidebar(
   textInput('session_name', 'Name for new session', value = 'assembly', placeholder = 'to identify later'),
   checkboxInput('report', 'Faster html report', value = T),
   checkboxInput('map_reads', 'Map reads to assembly', value = T),
+  checkboxInput('transfer', 'Transfer results to Wahadrive', value = T),
   checkboxInput('singularity', 'Run with Singularity', value = F),
   actionButton('start', 'Start pipeline'),
   #tags$hr(),
@@ -153,8 +154,9 @@ server <- function(input, output, session) {
       htmlreport <- if_else(input$report, '-r', '')
       singularity <- if_else(input$singularity, '-s', '')
       mapping <- if_else(input$map_reads, '-m', '')
+      transfer <- if_else(input$transfer, '-t', '')
       
-      arguments <- c('-p', selectedFolder, '-c', samplesheet()$datapath, '-w', input$pipeline, htmlreport, mapping, singularity)  
+      arguments <- c('-p', selectedFolder, '-c', samplesheet()$datapath, '-w', input$pipeline, htmlreport, mapping, singularity, transfer)  
       
       #:) remove empty strings
       #arguments <- arguments[arguments != ""] 
@@ -191,6 +193,7 @@ server <- function(input, output, session) {
       htmlreport <- if_else(input$report, '-r', '')
       singularity <- if_else(input$singularity, '-s', '')
       mapping <- if_else(input$map_reads, '-m', '')
+      transfer <- if_else(input$transfer, '-t', '')
       
       # launch new session
       args1 <- c('new', '-d', '-s', new_session_name)
@@ -200,7 +203,7 @@ server <- function(input, output, session) {
       string <- paste(
         'ont-plasmid.sh', 'Space', '-p', 'Space', selectedFolder, 'Space',  
         '-c', 'Space', samplesheet()$datapath, 'Space', '-w', 'Space', input$pipeline, 'Space', 
-        htmlreport, 'Space', mapping, 'Space', singularity, sep = ' '
+        htmlreport, 'Space', mapping, 'Space', singularity, 'Space', transfer, sep = ' '
       )
       args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
       system2('tmux', args = args2)
