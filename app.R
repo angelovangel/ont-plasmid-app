@@ -54,7 +54,7 @@ ui <- page_navbar(
   nav_panel(
     title = '',
     card(
-      max_height = '250px',
+      max_height = '300px',
       reactableOutput('table')
     ),
     card(
@@ -86,11 +86,11 @@ server <- function(input, output, session) {
   empty_df <- data.frame(
     session_id = NA,
     started = NA,
-    runtime = NA,
-    command = NA,
+    runtime = NA
+    #command = NA,
     #active = NA,
-    attached = NA,
-    session_path = NA
+    #attached = NA
+    #session_path = NA
   )
   
   # reactives
@@ -107,15 +107,15 @@ server <- function(input, output, session) {
       data.frame(
         session_id = str_split_i(tmuxinfo, " ", 2),
         started = str_split_i(tmuxinfo, " ", 1) %>% as.numeric() %>% as.POSIXct(),
-        runtime = NA,
-        command = str_split_i(tmuxinfo, " ", 5),
+        runtime = NA
+        #command = str_split_i(tmuxinfo, " ", 5),
         #active = str_split_i(tmuxinfo, " ", 6),
-        attached = str_split_i(tmuxinfo, " ", 3),
-        session_path = str_split_i(tmuxinfo, " ", 4)
+        #attached = str_split_i(tmuxinfo, " ", 3)
+        #session_path = str_split_i(tmuxinfo, " ", 4)
       ) %>%
         mutate(
-          runtime = difftime(now(), started, units = 'hours'),
-          attached = if_else(as.numeric(attached) == 1, 'yes', 'no')
+          runtime = difftime(now(), started, units = 'hours')
+          #attached = if_else(as.numeric(attached) == 1, 'yes', 'no')
         ) %>%
         arrange(started)
     }
@@ -184,11 +184,16 @@ server <- function(input, output, session) {
     } else if (is.null(samplesheet()$datapath)) {
       notify_info("No samplesheet uploaded", position = 'center-bottom')
     } else {
+      # new_session_name <- paste0(
+      #   digest::digest(runif(1), algo = 'crc32'), '-', 
+      #   stringi::stri_replace_all_charclass(input$session_name, "\\p{WHITE_SPACE}", ""), 
+      #   '-', input$pipeline
+      # )
       new_session_name <- paste0(
-        digest::digest(runif(1), algo = 'crc32'), '-', 
-        stringi::stri_replace_all_charclass(input$session_name, "\\p{WHITE_SPACE}", ""), 
-        '-', input$pipeline
+        Sys.time() %>% format('%Y%m%d-%H%M%S'), "-", input$pipeline, "-",
+        stringi::stri_replace_all_charclass(input$session_name, "\\p{WHITE_SPACE}", "")
       )
+        
       selectedFolder <- parseDirPath(volumes, input$fastq_folder)
       htmlreport <- if_else(input$report, '-r', '')
       singularity <- if_else(input$singularity, '-s', '')
@@ -202,7 +207,7 @@ server <- function(input, output, session) {
       # execute pipeline in the new session
       string <- paste(
         'ont-plasmid.sh', 'Space', '-p', 'Space', selectedFolder, 'Space',  
-        '-c', 'Space', samplesheet()$datapath, 'Space', '-w', 'Space', input$pipeline, 'Space', 
+        '-c', 'Space', samplesheet()$datapath, 'Space', '-w', 'Space', input$pipeline, 'Space', '-n', 'Space', new_session_name, 'Space', 
         htmlreport, 'Space', mapping, 'Space', singularity, 'Space', transfer, sep = ' '
       )
       args2 <- c('send-keys', '-t', new_session_name, string, 'C-m')
