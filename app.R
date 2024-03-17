@@ -177,6 +177,16 @@ server <- function(input, output, session) {
     notify_info(paste0(ext, ' file uploaded'), position = 'center-bottom')
   })
   
+  # disable mapping if amplicon selected
+  observeEvent(input$pipeline, {
+    if (input$pipeline == 'amplicon') {
+      updateCheckboxInput('map_reads', value = F, session = session)
+      shinyjs::disable('map_reads')
+    } else {
+      updateCheckboxInput('map_reads', value = T, session = session)
+      shinyjs::enable('map_reads')
+    }
+  })
   #main call
   observeEvent(input$start, {
     if (is.integer(input$fastq_folder)) {
