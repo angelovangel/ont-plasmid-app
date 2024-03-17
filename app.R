@@ -27,7 +27,7 @@ bin_on_path = function(bin) {
 
 sidebar <- sidebar(
   title = '',
-  selectizeInput('pipeline', 'Assembly pipeline', choices = c('amplicon', 'bacteria', 'plasmid'), selected = 'plasmid'),
+  selectizeInput('pipeline', 'Assembly pipeline', choices = c('amplicon', 'bacterial genome' = 'genome', 'plasmid'), selected = 'plasmid'),
   fileInput('upload', 'Upload sample sheet', multiple = F, accept = c('.xlsx', '.csv'), placeholder = 'xlsx or csv file'),
   shinyDirButton("fastq_folder", "Select fastq_pass folder", title ='Please select a fastq_pass folder from a run', multiple = F),
   #tags$hr(),
