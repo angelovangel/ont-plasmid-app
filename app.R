@@ -167,8 +167,9 @@ server <- function(input, output, session) {
         notify_failure('Samplesheet must have columns "user", "sample", "dna_size" and "barcode"', position = 'center-center', timeout = 5000)
         shinyjs::disable('start')
       } else {
-        notify_success('Samplesheet OK', position = 'center-center', timeout = 3000)
-        shinyjs::enable('start')
+        notify_success('Samplesheet OK', position = 'center-center', timeout = 1000)
+        shinyjs::enable('start') 
+        # check that selected folder ends in fastq_pass
       }
       x
     } else if (ext == 'xlsx') {
@@ -178,15 +179,27 @@ server <- function(input, output, session) {
         shinyjs::disable('start')
       } else {
         notify_success('Samplesheet OK', position = 'center-center', timeout = 3000)
-        if (!is.integer(input$fastq_path)) {
-          shinyjs::enable('start')
-        }
+        shinyjs::enable('start')
       }
       y
     }
   })
   
   # observers
+  observeEvent(input$fastq_folder, {
+    # start checking if something is selected, initially it is integer
+    if (!is.integer(input$fastq_folder)) {
+      path <- parseDirPath(volumes, input$fastq_folder)
+      if (str_ends(path, 'fastq_pass')) {
+        notify_success(path, position = 'center-center', timeout = 3000)
+        shinyjs::enable('start')
+      } else {
+        notify_failure('Select a fastq_pass folder!', position = 'center-center', timeout = 3000)
+        shinyjs::disable('start')
+      }
+    }
+  })
+  
   # disable mapping if amplicon selected
   observeEvent(input$pipeline, {
     if (input$pipeline == 'amplicon') {
