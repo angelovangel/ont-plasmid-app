@@ -16,6 +16,7 @@ library(readxl)
 library(digest)
 library(reactable)
 library(lubridate)
+library(tools)
 
 
 # Shiny app to run the ONT plasmid pipeline using pueue (BCL)
@@ -80,6 +81,8 @@ server <- function(input, output, session) {
     notify_failure('nextflow not found', position = 'center-bottom')
   } else {
     notify_success('Server is ready', position = 'center-bottom')
+    # make start active later in stdout
+    shinyjs::disable('start')
   }
   
   
@@ -139,44 +142,51 @@ server <- function(input, output, session) {
   shinyDirChoose(input, "fastq_folder", 
                  roots = volumes,
                  session = session,
-                 restrictions = system.file(package = "base")) 
+                 restrictions = system.file(package = "base"))
+  
   
   # build arguments for main call and display them on stdout at the same time
   output$stdout <- renderPrint({
-    if (is.integer(input$fastq_folder)) {
-      cat("No fastq folder selected\n")
-    } else if (is.null(samplesheet()$datapath)) {
-      cat("No samplesheet uploaded")
-    } else {
-      # hard set fastq folder and build arguments
-      selectedFolder <- parseDirPath(volumes, input$fastq_folder)
-      nbarcodes <- length(list.files(path = selectedFolder, pattern = "barcode*", recursive = F))
-      htmlreport <- if_else(input$report, '-r', '')
-      singularity <- if_else(input$singularity, '-s', '')
-      mapping <- if_else(input$map_reads, '-m', '')
-      transfer <- if_else(input$transfer, '-t', '')
-      
-      arguments <- c('-p', selectedFolder, '-c', samplesheet()$datapath, '-w', input$pipeline, htmlreport, mapping, singularity, transfer)  
-      
-      #:) remove empty strings
-      #arguments <- arguments[arguments != ""] 
-      cat(
-        'Selected folder:\n', selectedFolder, '\n', '-------\n\n',
-        'Number of barcodes:\n', nbarcodes, '\n',  '-------\n\n',
-        'Command:\n',
-        'process-ontseq.sh', arguments)
+    req(samplesheet())
+    ext <- tools::file_ext(samplesheet()$datapath)
+    validate(need(ext == 'csv' | ext == 'xlsx', 'Please upload a csv or excel (xlsx) file'))
+    if (ext == 'csv') {
+      # deal with samplesheets lacking complete final line, e.g. CRLF
+      # read 2 times, first time to capture warning
+      x <- tryCatch(
+        read.csv(samplesheet()$datapath, header = T), 
+        warning = function(w) {w}
+      )
+      if (inherits(x, 'simpleWarning')) {
+        notify_warning(x$message, position = 'center-center', timeout = 5000)
+        #notify_warning('This samplesheet will work but the last sample may be omitted', position = 'center-center', timeout = 5000)
+        x <- read.csv(samplesheet()$datapath, header = T)
+      }
+      # check if sample and barcode columns are present
+      if (sum(c('user', 'sample', 'dna_size', 'barcode') %in% colnames(x)) != 4) {
+        notify_failure('Samplesheet must have columns "user", "sample", "dna_size" and "barcode"', position = 'center-center', timeout = 5000)
+        shinyjs::disable('start')
+      } else {
+        notify_success('Samplesheet OK', position = 'center-center', timeout = 3000)
+        shinyjs::enable('start')
+      }
+      x
+    } else if (ext == 'xlsx') {
+      y <- read_excel(samplesheet()$datapath)
+      if (sum(c('sample', 'barcode') %in% colnames(y)) != 2) {
+        notify_failure('Samplesheet must have columns "user", "sample", "dna_size" and "barcode"', position = 'center-center', timeout = 5000)
+        shinyjs::disable('start')
+      } else {
+        notify_success('Samplesheet OK', position = 'center-center', timeout = 3000)
+        if (!is.integer(input$fastq_path)) {
+          shinyjs::enable('start')
+        }
+      }
+      y
     }
   })
   
-  
-  
   # observers
-  # samplesheet
-  observeEvent(input$upload, {
-    ext <- tools::file_ext(samplesheet()$datapath)
-    notify_info(paste0(ext, ' file uploaded'), position = 'center-bottom')
-  })
-  
   # disable mapping if amplicon selected
   observeEvent(input$pipeline, {
     if (input$pipeline == 'amplicon') {
