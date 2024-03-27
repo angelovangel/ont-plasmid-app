@@ -195,7 +195,7 @@ server <- function(input, output, session) {
         shinyjs::enable('start')
       } else {
         notify_failure('Select a fastq_pass folder!', position = 'center-center', timeout = 3000)
-        shinyjs::disable('start')
+        #shinyjs::disable('start')
       }
     }
   })
